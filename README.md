@@ -50,7 +50,7 @@
 mv ~/.hammerspoon ~/.hammerspoon.bak
 
 # 克隆当前仓库（将 YOUR_USERNAME 替换为您的 GitHub 用户名）
-git clone https://github.com/YOUR_USERNAME/hammerspoon-config.git ~/.hammerspoon
+git clone https://github.com/vinono/hammerspoon-config.git ~/.hammerspoon
 ```
 
 ### 3. 运行与加载
