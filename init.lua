@@ -8,6 +8,7 @@ local globalOk, globalErr = pcall(function()
     -- 导入功能模块
     require("ime.ime")           -- 日式键盘单向无缝强切与防失焦自愈看门狗
     require("caffeine.caffeine") -- 防休眠 Toggle 菜单栏控制
+    require("clipboard.clipboard") -- 剪贴板历史管理
     require("reload.reload")     -- 配置文件变动自动重载
 
 end)
