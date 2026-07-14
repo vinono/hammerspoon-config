@@ -1,77 +1,165 @@
 -- ==========================================================
--- 日式键盘 (JIS) 输入法防失效切换 (终极稳健+零失焦版)
+-- 日式键盘 (JIS) 输入法切换：稳健版
+-- - 支持唤醒/解锁后自愈
+-- - 记录切换失败日志
+-- - Secure Input 场景不盲目吞键
+-- - 前台应用切换时轻量重建 eventtap
 -- ==========================================================
 
--- 💡 正确的 macOS 系统级输入源 ID (经 defaults read HIToolbox 验证 100% 精确)
-local CHINESE_ID = "com.apple.inputmethod.SCIM.ITABC"  -- 简体拼音
-local ENGLISH_ID = "com.apple.keylayout.ABC"           -- 英文 ABC
+local CHINESE_ID = "com.apple.inputmethod.SCIM.ITABC"
+local ENGLISH_ID = "com.apple.keylayout.ABC"
 
-local JIS_EISUU = 102 -- 空格左侧：英数
-local JIS_KANA  = 104 -- 空格右侧：かな
+local JIS_EISUU = 102
+local JIS_KANA = 104
 
--- 重置旧的资源，防止内存泄漏
-if JisKeyInterceptor then 
-    JisKeyInterceptor:stop() 
-    JisKeyInterceptor = nil
+local LOG_FILE = os.getenv("HOME") .. "/.hammerspoon/ime/ime.log"
+local REBUILD_DELAY = 0.25
+
+-- 重置旧的资源，防止内存泄漏/重复监听
+if JisKeyInterceptor then pcall(function() JisKeyInterceptor:stop() end) JisKeyInterceptor = nil end
+if JisSystemWatcher then pcall(function() JisSystemWatcher:stop() end) JisSystemWatcher = nil end
+if JisAppWatcher then pcall(function() JisAppWatcher:stop() end) JisAppWatcher = nil end
+if JisRebuildTimer then pcall(function() JisRebuildTimer:stop() end) JisRebuildTimer = nil end
+
+local lastSecureInputState = nil
+
+local function appendLog(message)
+    local ok, err = pcall(function()
+        local f = io.open(LOG_FILE, "a")
+        if not f then return end
+        f:write(os.date("%Y-%m-%d %H:%M:%S ") .. tostring(message) .. "\n")
+        f:close()
+    end)
+    if not ok then
+        print("[ime] log write failed:", err)
+    end
 end
-if JisSystemWatcher then 
-    JisSystemWatcher:stop() 
-    JisSystemWatcher = nil
+
+local function safeCurrentSourceID()
+    local ok, currentID = pcall(hs.keycodes.currentSourceID)
+    if ok then return currentID end
+    appendLog("read currentSourceID failed: " .. tostring(currentID))
+    return nil
 end
 
--- 核心初始化函数
-local function initJisInterceptor()
-    if JisKeyInterceptor then 
-        JisKeyInterceptor:stop() 
+local function switchInput(targetID, label)
+    local before = safeCurrentSourceID()
+    if before == targetID then
+        return true
+    end
+
+    local ok, result = pcall(hs.keycodes.currentSourceID, targetID)
+    if not ok then
+        appendLog("switch to " .. label .. " failed (pcall): " .. tostring(result))
+        return false
+    end
+
+    local after = safeCurrentSourceID()
+    if after ~= targetID then
+        appendLog("switch to " .. label .. " not applied, before=" .. tostring(before) .. ", after=" .. tostring(after))
+        return false
+    end
+
+    return true
+end
+
+local function stopInterceptor()
+    if JisKeyInterceptor then
+        JisKeyInterceptor:stop()
         JisKeyInterceptor = nil
     end
-
-    -- 全局变量防回收
-    JisKeyInterceptor = hs.eventtap.new({hs.eventtap.event.types.keyDown}, function(event)
-        local keyCode = event:getKeyCode()
-        
-        -- 1. 按下右侧 Kana 键 -> 切中文
-        if keyCode == JIS_KANA then
-            local ok, currentID = pcall(hs.keycodes.currentSourceID)
-            if not ok then currentID = "" end
-
-            -- 💡 纯单向强切，不发出 any 多余按键，确保 0% 失去焦点
-            if currentID ~= CHINESE_ID then
-                pcall(hs.keycodes.currentSourceID, CHINESE_ID)
-            end
-            return true -- 瞬间拦截
-        end
-        
-        -- 2. 按下左侧 Eisuu 键 -> 切英文
-        if keyCode == JIS_EISUU then
-            local ok, currentID = pcall(hs.keycodes.currentSourceID)
-            if not ok then currentID = "" end
-
-            -- 💡 纯单向强切，移除了导致文本框失焦的 Escape 按键发送，保障文本框光标的绝对连贯性
-            if currentID ~= ENGLISH_ID then
-                pcall(hs.keycodes.currentSourceID, ENGLISH_ID)
-            end
-            return true -- 瞬间拦截
-        end
-        
-        return false -- 其他物理按键正常放行
-    end)
-
-    JisKeyInterceptor:start()
 end
 
--- ==========================================================
--- 核心看门狗：唤醒自愈与解锁重建
--- ==========================================================
-JisSystemWatcher = hs.caffeinate.watcher.new(function(eventType)
-    if eventType == hs.caffeinate.watcher.systemDidWake or 
-       eventType == hs.caffeinate.watcher.screensDidUnlock then
-        hs.timer.doAfter(1.0, function() -- 延迟 1s 等待系统 TSM 服务完全就绪
-            initJisInterceptor()
-        end)
-    end
-end)
-JisSystemWatcher:start()
+local function secureInputEnabled()
+    local ok, enabled = pcall(hs.eventtap.isSecureInputEnabled)
+    if ok then return enabled end
+    appendLog("isSecureInputEnabled failed: " .. tostring(enabled))
+    return false
+end
 
--- 初始启动监听
-initJisInterceptor()
+local function buildInterceptor()
+    stopInterceptor()
+
+    JisKeyInterceptor = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(event)
+        local keyCode = event:getKeyCode()
+        if keyCode ~= JIS_KANA and keyCode ~= JIS_EISUU then
+            return false
+        end
+
+        local secure = secureInputEnabled()
+        if lastSecureInputState ~= secure then
+            lastSecureInputState = secure
+            appendLog("secure input changed: " .. tostring(secure))
+        end
+
+        if secure then
+            appendLog("secure input enabled, skip intercept for keyCode=" .. tostring(keyCode))
+            return false
+        end
+
+        if keyCode == JIS_KANA then
+            local switched = switchInput(CHINESE_ID, "Chinese")
+            return switched
+        end
+
+        if keyCode == JIS_EISUU then
+            local switched = switchInput(ENGLISH_ID, "English")
+            return switched
+        end
+
+        return false
+    end)
+
+    local ok, err = pcall(function() JisKeyInterceptor:start() end)
+    if not ok then
+        appendLog("eventtap start failed: " .. tostring(err))
+        return false
+    end
+
+    appendLog("eventtap started")
+    return true
+end
+
+local function scheduleRebuild(reason)
+    if JisRebuildTimer then
+        JisRebuildTimer:stop()
+        JisRebuildTimer = nil
+    end
+
+    JisRebuildTimer = hs.timer.doAfter(REBUILD_DELAY, function()
+        appendLog("rebuild interceptor: " .. tostring(reason))
+        buildInterceptor()
+        JisRebuildTimer = nil
+    end)
+end
+
+local function installWatchers()
+    if JisSystemWatcher then
+        JisSystemWatcher:stop()
+        JisSystemWatcher = nil
+    end
+    if JisAppWatcher then
+        JisAppWatcher:stop()
+        JisAppWatcher = nil
+    end
+
+    JisSystemWatcher = hs.caffeinate.watcher.new(function(eventType)
+        if eventType == hs.caffeinate.watcher.systemDidWake or
+           eventType == hs.caffeinate.watcher.screensDidUnlock then
+            scheduleRebuild("wake/unlock")
+        end
+    end)
+    JisSystemWatcher:start()
+
+    JisAppWatcher = hs.application.watcher.new(function(appName, eventType)
+        if eventType == hs.application.watcher.activated then
+            scheduleRebuild("app activated: " .. tostring(appName))
+        end
+    end)
+    JisAppWatcher:start()
+end
+
+appendLog("ime module loading")
+buildInterceptor()
+installWatchers()
+appendLog("ime module ready")

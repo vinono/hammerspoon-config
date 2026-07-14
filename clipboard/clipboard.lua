@@ -38,32 +38,20 @@ local function formatHistoryTitle(text)
     -- 替换换行符为符号，使菜单栏只显示单行
     local cleanText = text:gsub("\r\n", " ↵ "):gsub("\n", " ↵ "):gsub("\r", " ↵ ")
     
-    -- 借助 Lua 5.3+ 内置 utf8 库进行安全截断，防止中文字符半截导致乱码
-    local charCount = 0
-    local hasUtf8, _ = pcall(function()
-        for _, _ in utf8.codes(cleanText) do
-            charCount = charCount + 1
+    -- 借助 utf8.offset 快速定位第 maxDisplayChars + 1 个字符，避开对长文本的全字符遍历
+    local hasUtf8, offset = pcall(utf8.offset, cleanText, maxDisplayChars + 1)
+    if hasUtf8 then
+        if offset then
+            return string.sub(cleanText, 1, offset - 1) .. "..."
         end
-    end)
-
-    if not hasUtf8 then
-        -- 降级为普通字节数截断
+        return cleanText
+    else
+        -- 降级为字节截断
         if string.len(cleanText) > maxDisplayChars then
             return string.sub(cleanText, 1, maxDisplayChars) .. "..."
         end
         return cleanText
     end
-
-    if charCount <= maxDisplayChars then
-        return cleanText
-    end
-
-    -- 获取第 maxDisplayChars + 1 个字符的字节偏移
-    local offset = utf8.offset(cleanText, maxDisplayChars + 1)
-    if offset then
-        return string.sub(cleanText, 1, offset - 1) .. "..."
-    end
-    return string.sub(cleanText, 1, maxDisplayChars) .. "..."
 end
 
 -- 3. 将新内容推入历史记录队列

@@ -3,3 +3,6 @@ hs_error.txt
 test_result.log
 init.lua.bak
 Spoons/
+*.log
+**/*.log
+**/*.bak.codex
