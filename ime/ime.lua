@@ -98,6 +98,12 @@ local function buildInterceptor()
         end
 
         if keyCode == JIS_KANA then
+            -- 拼音处于英文子模式时，currentSourceID 仍会是 CHINESE_ID。
+            -- 此时不能吞掉原始 Kana 键，否则系统没有机会把拼音切回中文。
+            if safeCurrentSourceID() == CHINESE_ID then
+                appendLog("Chinese source already selected; pass through Kana for native Chinese mode")
+                return false
+            end
             local switched = switchInput(CHINESE_ID, "Chinese")
             return switched
         end
