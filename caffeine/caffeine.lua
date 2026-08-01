@@ -1,114 +1,65 @@
 -- ==========================================================
--- Caffeine: Mac 始终不休眠及菜单栏 Toggle
+-- Caffeine: Mac 防休眠菜单栏控制 (极简优雅版)
 -- ==========================================================
 
--- 重置旧的资源，防止内存泄漏/重复监听
-if JisSleepMenubar then 
-    JisSleepMenubar:delete() 
-    JisSleepMenubar = nil
-end
-if JisCaffeineSleepWatcher then
-    JisCaffeineSleepWatcher:stop()
-    JisCaffeineSleepWatcher = nil
-end
-if JisCaffeineScreenWatcher then
-    JisCaffeineScreenWatcher:stop()
-    JisCaffeineScreenWatcher = nil
-end
+-- 重置旧的资源，防止内存泄漏/重复挂载
+if JisSleepMenubar then pcall(function() JisSleepMenubar:delete() end) JisSleepMenubar = nil end
+if JisCaffeineSleepWatcher then pcall(function() JisCaffeineSleepWatcher:stop() end) JisCaffeineSleepWatcher = nil end
 
 local isSleepPrevented = hs.settings.get("caffeine_isSleepPrevented") or false
-local sleepMenubar = nil
 
--- 加载原生单色模板图标，若系统不支持则降级使用 Emoji
-local activeIcon = hs.image.imageFromName("cup.and.saucer.fill")
-if activeIcon then
-    activeIcon:template(true)
-    activeIcon = activeIcon:size({w = 16, h = 16})
-end
-
-local inactiveIcon = hs.image.imageFromName("zzz")
-if inactiveIcon then
-    inactiveIcon:template(true)
-    inactiveIcon = inactiveIcon:size({w = 16, h = 16})
-end
-
--- 状态同步渲染函数
-local function updateSleepDisplay()
-    if isSleepPrevented then
-        if activeIcon then
-            sleepMenubar:setIcon(activeIcon)
-        else
-            sleepMenubar:setTitle("☕️")
-        end
-        sleepMenubar:setTooltip("Mac 防休眠已开启：保持屏幕与系统常亮")
-        hs.caffeinate.set("displayIdle", true, true)
-    else
-        if inactiveIcon then
-            sleepMenubar:setIcon(inactiveIcon)
-        else
-            sleepMenubar:setTitle("💤")
-        end
-        sleepMenubar:setTooltip("Mac 防休眠已关闭：遵循系统默认电源设置")
-        hs.caffeinate.set("displayIdle", false, true)
+-- 加载 assets/ 目录下的自定义图片 (active.png / inactive.png)，若无则降级为 Emoji
+local function loadIcon(name)
+    local path = os.getenv("HOME") .. "/.hammerspoon/caffeine/assets/" .. name
+    local ok, img = pcall(hs.image.imageFromPath, path)
+    if ok and img then
+        return img:template(true):size({ w = 18, h = 18 })
     end
+    return nil
+end
+
+local activeIcon   = loadIcon("active.png")
+local inactiveIcon = loadIcon("inactive.png")
+
+-- 更新菜单栏 UI 与系统防休眠状态
+local function updateDisplay()
+    if not _G.JisSleepMenubar then return end
+
+    local icon = isSleepPrevented and activeIcon or inactiveIcon
+    if icon then
+        _G.JisSleepMenubar:setIcon(icon)
+        _G.JisSleepMenubar:setTitle("")
+    else
+        _G.JisSleepMenubar:setIcon(nil)
+        _G.JisSleepMenubar:setTitle(isSleepPrevented and "☕️" or "🌙")
+    end
+
+    local statusText = isSleepPrevented and "防休眠已开启：保持系统常亮 ☕️" or "防休眠已关闭：遵循系统电源规则 🌙"
+    _G.JisSleepMenubar:setTooltip("Caffeine " .. statusText)
+
+    hs.caffeinate.set("displayIdle", isSleepPrevented, true)
     hs.settings.set("caffeine_isSleepPrevented", isSleepPrevented)
 end
 
--- 状态切换回调
-local function toggleSleepPrevention()
-    isSleepPrevented = not isSleepPrevented
-    updateSleepDisplay()
+-- 创建菜单栏项并挂载点击回调
+_G.JisSleepMenubar = hs.menubar.new()
+if _G.JisSleepMenubar then
+    _G.JisSleepMenubar:setClickCallback(function()
+        isSleepPrevented = not isSleepPrevented
+        updateDisplay()
+    end)
+    updateDisplay()
 end
 
--- 实例化菜单栏
-JisSleepMenubar = hs.menubar.new()
-if JisSleepMenubar then
-    sleepMenubar = JisSleepMenubar
-    if activeIcon and inactiveIcon then
-        sleepMenubar:setTitle("")
-    end
-    sleepMenubar:setClickCallback(toggleSleepPrevention)
-    updateSleepDisplay()
-end
-
--- 监听系统休眠事件以检测合盖动作并重置状态
-JisCaffeineSleepWatcher = hs.caffeinate.watcher.new(function(eventType)
+-- 系统休眠/合盖看门狗：系统准备睡眠时自动关闭防休眠，防止在电脑包内发热耗电
+_G.JisCaffeineSleepWatcher = hs.caffeinate.watcher.new(function(eventType)
     if eventType == hs.caffeinate.watcher.systemWillSleep then
-        -- 当系统即将休眠时（如合盖），自动关闭防休眠，确保安全睡眠，防止在包里发热耗电
         if isSleepPrevented then
             isSleepPrevented = false
-            updateSleepDisplay()
+            updateDisplay()
         end
     end
 end)
-if JisCaffeineSleepWatcher then
-    JisCaffeineSleepWatcher:start()
-end
-
--- 检测内置屏幕是否处于激活状态的辅助函数
-local function hasBuiltInScreen()
-    for _, screen in ipairs(hs.screen.allScreens()) do
-        local name = screen:name():lower()
-        if name:match("built%-in") or name:match("color lcd") or name:match("retina") then
-            return true
-        end
-    end
-    return false
-end
-
--- 屏幕变化事件回调：用于捕获无外接显示器时的合盖动作
-local function handleScreenChange()
-    -- 如果内置屏幕断开（合盖），且当前没有接任何外接显示器（即活动屏幕数为 0），自动关闭防休眠允许 Mac 休眠
-    if not hasBuiltInScreen() and #hs.screen.allScreens() == 0 then
-        if isSleepPrevented then
-            isSleepPrevented = false
-            updateSleepDisplay()
-        end
-    end
-end
-
--- 注册屏幕变化监听器，确保合盖能及时自愈
-JisCaffeineScreenWatcher = hs.screen.watcher.new(handleScreenChange)
-if JisCaffeineScreenWatcher then
-    JisCaffeineScreenWatcher:start()
+if _G.JisCaffeineSleepWatcher then
+    _G.JisCaffeineSleepWatcher:start()
 end
