@@ -1,48 +1,42 @@
 -- ==========================================================
--- 日式键盘 (JIS) 输入法切换：极简极速版
+-- 日式键盘 (JIS) 输入法切换：自动自愈极速版 (含防失效看门狗)
 -- ==========================================================
 
 local CHINESE_ID = "com.apple.inputmethod.SCIM.ITABC"
 local ENGLISH_ID = "com.apple.keylayout.ABC"
+local JIS_EISUU, JIS_KANA = 102, 104
 
-local JIS_EISUU = 102  -- 空格左侧：英数 键
-local JIS_KANA  = 104  -- 空格右侧：かな 键
+-- 重置旧资源，防止重载泄漏
+if JisKeyInterceptor then pcall(function() JisKeyInterceptor:stop() end) end
+if JisAppWatcher then pcall(function() JisAppWatcher:stop() end) end
+if JisWatchdogTimer then pcall(function() JisWatchdogTimer:stop() end) end
 
--- 清理旧资源，防止重载内存泄漏
-if JisKeyInterceptor then pcall(function() JisKeyInterceptor:stop() end) JisKeyInterceptor = nil end
-
-local function secureInputEnabled()
-    local ok, enabled = pcall(hs.eventtap.isSecureInputEnabled)
-    return ok and enabled
-end
-
--- 使用全局变量挂载，防止被 Lua GC 垃圾回收导致监听静默失效
+-- 核心按键拦截器
 _G.JisKeyInterceptor = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(event)
-    local keyCode = event:getKeyCode()
-    if keyCode ~= JIS_KANA and keyCode ~= JIS_EISUU then
-        return false
-    end
+    local code = event:getKeyCode()
+    if code ~= JIS_KANA and code ~= JIS_EISUU then return false end
 
-    -- 忽略按键长按连发 (Autorepeat)
+    -- 忽略按键连发与 Secure Input 场景
     local isRepeat = event:getProperty(hs.eventtap.event.properties.keyboardEventAutorepeat)
-    if isRepeat and isRepeat ~= 0 then
-        return true
-    end
+    if isRepeat and isRepeat ~= 0 then return true end
+    local okSecure, secure = pcall(hs.eventtap.isSecureInputEnabled)
+    if okSecure and secure then return false end
 
-    -- 密码框/终端 sudo 场景放行
-    if secureInputEnabled() then
-        return false
-    end
+    local okID, currentID = pcall(hs.keycodes.currentSourceID)
+    if not okID then currentID = "" end
 
-    -- 1. 按下 Kana 键 -> 强制切换中文
-    if keyCode == JIS_KANA then
+    -- 1. Kana 键 -> 切中文
+    if code == JIS_KANA then
+        if currentID == CHINESE_ID then return false end -- 已是中文模式时放行，退出拼音内部英文模式
         pcall(hs.keycodes.currentSourceID, CHINESE_ID)
         return true
     end
 
-    -- 2. 按下 Eisuu 键 -> 强制切换英文
-    if keyCode == JIS_EISUU then
-        pcall(hs.keycodes.currentSourceID, ENGLISH_ID)
+    -- 2. Eisuu 键 -> 切英文
+    if code == JIS_EISUU then
+        if currentID ~= ENGLISH_ID then
+            pcall(hs.keycodes.currentSourceID, ENGLISH_ID)
+        end
         return true
     end
 
@@ -50,3 +44,22 @@ _G.JisKeyInterceptor = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, func
 end)
 
 _G.JisKeyInterceptor:start()
+
+-- 零 CPU 消耗自愈看门狗：当监听器被 macOS 静默关闭时自动唤醒
+local function keepAlive()
+    if JisKeyInterceptor then
+        local ok, enabled = pcall(function() return JisKeyInterceptor:isEnabled() end)
+        if not ok or not enabled then
+            pcall(function() JisKeyInterceptor:start() end)
+        end
+    end
+end
+
+-- 1. 应用激活看门狗（事件驱动，平时 CPU 占用 0.0%）
+_G.JisAppWatcher = hs.application.watcher.new(function(_, eventType)
+    if eventType == hs.application.watcher.activated then keepAlive() end
+end)
+_G.JisAppWatcher:start()
+
+-- 2. 定时巡检看门狗（每 2 秒检查一次，耗时微秒级，CPU 占用 0.0%）
+_G.JisWatchdogTimer = hs.timer.doEvery(2.0, keepAlive)
