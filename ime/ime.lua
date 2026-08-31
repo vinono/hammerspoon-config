@@ -41,6 +41,7 @@ _G.JisKeyInterceptor = hs.eventtap.new({
 
     -- 1. Kana 键 -> 切中文
     if code == JIS_KANA then
+        _G.LastSystemInputSourceID = CHINESE_ID
         if currentID == CHINESE_ID then return false end -- 已是中文模式时放行，退出拼音内部英文模式
         pcall(hs.keycodes.currentSourceID, CHINESE_ID)
         return true
@@ -48,6 +49,7 @@ _G.JisKeyInterceptor = hs.eventtap.new({
 
     -- 2. Eisuu 键 -> 切英文
     if code == JIS_EISUU then
+        _G.LastSystemInputSourceID = ENGLISH_ID
         if currentID ~= ENGLISH_ID then
             pcall(hs.keycodes.currentSourceID, ENGLISH_ID)
         end
@@ -85,5 +87,4 @@ _G.JisCaffeinateWatcher = hs.caffeinate.watcher.new(function(eventType)
     end
 end)
 _G.JisCaffeinateWatcher:start()
-
 
