@@ -7,7 +7,6 @@ local globalOk, globalErr = pcall(function()
     
     -- 导入功能模块
     require("ime.ime")           -- 日式键盘单向无缝强切与防失焦自愈看门狗
-    require("ime.doubao_return") -- 豆包全局语音浮窗关闭后恢复之前的输入法
     require("caffeine.caffeine") -- 防休眠 Toggle 菜单栏控制
     require("reload.reload")     -- 配置文件变动自动重载
 
