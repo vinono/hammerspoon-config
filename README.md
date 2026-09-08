@@ -14,6 +14,7 @@
 | :--- | :--- | :--- | :---: |
 | **`ime`** | **日式键盘成对精准强切** | 基于 KeyDown/KeyUp 成对拦截状态机，100% 解决跨应用孤立按键泄露；智能穿透自愈拼音内部英文模式；自动自愈 Quartz 超时与系统唤醒。 | - |
 | **`caffeine`** | **Caffeine 防休眠 Toggle** | 一键阻止/允许系统与屏幕空闲休眠；合盖状态智能感知，合盖时自动恢复正常睡眠策略。 | ☕️ / 🌙 |
+| **`chrome`** | **Chrome 参数冷启动** | Hammerspoon 新进程启动时，在 Chrome 尚未运行的情况下使用美国地区参数启动一次；配置热重载不会重复打开 Chrome。 | - |
 | **`reload`** | **配置自动热重载** | 监听配置文件变动，`.lua` 文件保存时瞬时完成 Reload。 | 🚀 气泡提示 |
 
 ---
@@ -32,6 +33,8 @@
 ├── caffeine/
 │   ├── caffeine.lua      # 菜单栏防休眠与 Toggle 机制
 │   └── assets/           # 菜单栏自定义模板图标资源 (active.png / inactive.png)
+├── chrome/
+│   └── startup.lua       # Hammerspoon 登录启动时带地区参数冷启动 Chrome
 └── reload/
     └── reload.lua        # 配置文件变动自动重载模块
 ```
@@ -62,6 +65,7 @@ git clone https://github.com/vinono/hammerspoon-config.git ~/.hammerspoon
 - 模块初始化成功后，系统会弹出通知：`Hammerspoon 配置重载成功 🚀`。
 - 若系统未启用 ABC 或简体拼音，会主动弹窗警示。
 - 状态栏会出现 🌙 图标，表示 Caffeine 防休眠处于就绪状态。
+- Hammerspoon 已开启“登录时启动”且 Chrome 尚未运行时，会使用 `--variations-override-country=us` 启动 Chrome。Chrome 已在运行时不会强制退出或重启，并会提示本次未重新应用参数。
 
 ---
 
