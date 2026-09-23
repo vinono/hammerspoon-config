@@ -5,7 +5,7 @@
 -- 外层全局异常捕获，确保任何 Lua 错误都能显式弹窗和写入日志
 local globalOk, globalErr = pcall(function()
     
-    -- 导入功能模块
+    require("hs.ipc")            -- 启用 CLI 命令行通信支持
     require("ime.ime")           -- 日式键盘单向无缝强切与防失焦自愈看门狗
     require("caffeine.caffeine") -- 防休眠 Toggle 菜单栏控制
     require("chrome.startup")    -- 登录启动时为 Chrome 注入 Gemini 地区参数

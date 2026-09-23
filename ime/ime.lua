@@ -51,6 +51,13 @@ jisInputEventTap = hs.eventtap.new({
   local keyCode = event:getKeyCode()
   if keyCode ~= jisEisuu and keyCode ~= jisKana then return false end
 
+  _G.JisLastKeyEvent = {
+    keyCode = keyCode,
+    eventType = eventType,
+    time = hs.timer.secondsSinceEpoch(),
+    sourceBefore = hs.keycodes.currentSourceID()
+  }
+
   -- 安全输入场景放行并重置状态
   if hs.eventtap.isSecureInputEnabled() then
     consumedJisKeys[keyCode] = nil
