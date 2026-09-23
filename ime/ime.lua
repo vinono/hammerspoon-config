@@ -33,12 +33,7 @@ end
 -- 当处于中文模式下按 Kana 时，放行两个事件给 macOS，触发系统退出拼音内部英文模式
 local consumedJisKeys = {}
 
-jisInputEventTap = hs.eventtap.new({
-  hs.eventtap.event.types.keyDown,
-  hs.eventtap.event.types.keyUp,
-  hs.eventtap.event.types.tapDisabledByTimeout,
-  hs.eventtap.event.types.tapDisabledByUserInput,
-}, function(event)
+_G.handleJisInputEvent = function(event)
   local eventType = event:getType()
 
   -- Quartz 超时或被临时禁用时，原地重新拉起
@@ -99,7 +94,14 @@ jisInputEventTap = hs.eventtap.new({
     hs.alert.show("无法切换到 ABC 英文")
   end
   return true
-end)
+end
+
+jisInputEventTap = hs.eventtap.new({
+  hs.eventtap.event.types.keyDown,
+  hs.eventtap.event.types.keyUp,
+  hs.eventtap.event.types.tapDisabledByTimeout,
+  hs.eventtap.event.types.tapDisabledByUserInput,
+}, _G.handleJisInputEvent)
 
 jisInputEventTap:start()
 
