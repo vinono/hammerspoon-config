@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>IME probe — local only</title>
+<style>body{font:18px system-ui;max-width:850px;margin:40px auto}textarea,input,[contenteditable]{font:24px system-ui;width:95%;border:1px solid #888;padding:12px;margin:8px 0}pre{font:13px monospace;white-space:pre-wrap}</style>
+<h1>IME probe — local only</h1><p>Native-key test: Eisuu → Kana → n i h a o. Composition events prove IME activity.</p>
+<label>Plain input<input id="plain" autocomplete="off"></label>
+<label>Textarea<textarea id="area"></textarea></label>
+<label>Rich text<div contenteditable="true" id="rich" role="textbox" aria-label="Rich text"></div></label>
+<button id="reset">Clear test</button><div id="out">Ready</div>
+<script>
+let rows=[];let seq=0;const out=document.getElementById('out');
+for(const el of [plain,area,rich]) for(const type of ['focus','blur','keydown','keyup','compositionstart','compositionupdate','compositionend','beforeinput','input']) el.addEventListener(type,e=>{rows.push({seq:++seq,t:Math.round(performance.now()),field:el.id,type,key:e.key,code:e.code,data:e.data,composing:e.isComposing,inputType:e.inputType,value:el.value??el.textContent});if(rows.length>100)rows.shift();out.replaceChildren(...rows.slice(-18).map(r=>{const p=document.createElement('p');p.style='font:12px monospace;margin:2px';p.textContent=JSON.stringify(r);return p}));});
+reset.onclick=()=>{plain.value='';area.value='';rich.textContent='';rows=[];out.textContent='Ready';plain.focus()};
+</script>

@@ -1,0 +1,155 @@
+-- Temporary native IME repro harness. No user keystrokes are recorded.
+-- All injected keys are guarded by Chrome + exact local test page + focused field.
+if IMEProbe and IMEProbe.stop then IMEProbe.stop('replaced') end
+IMEProbe = { timers = {}, rows = {}, running = false }
+local P = IMEProbe
+local path = '/private/tmp/ime-probe-20260923/results.jsonl'
+local function log(row)
+  row.at = hs.timer.secondsSinceEpoch()
+  row.runID=P.runID
+  row.source = hs.keycodes.currentSourceID()
+  row.tap = jisInputEventTap and jisInputEventTap:isEnabled()
+  row.secure = hs.eventtap.isSecureInputEnabled()
+  row.modifiers = hs.eventtap.checkKeyboardModifiers()
+  table.insert(P.rows,row)
+  local f = io.open(path,'a'); if f then f:write(hs.json.encode(row)..'\n'); f:close() end
+end
+function P.stop(reason)
+  P.running = false
+  for _, t in ipairs(P.timers) do t:stop() end
+  P.timers = {}
+  log({kind='stop',reason=reason})
+  if reason=='complete' and P.nextBatch then hs.timer.doAfter(.2,P.nextBatch) else P.nextBatch=nil end
+end
+local function later(delay,fn)
+  local t = hs.timer.doAfter(delay,fn); table.insert(P.timers,t)
+end
+local function field()
+  local a = hs.application.frontmostApplication()
+  if not a or a:bundleID() ~= 'com.google.Chrome' then return nil,'not Chrome' end
+  local w = a:focusedWindow()
+  if not w or not (w:title() or ''):find('IME probe — local only',1,true) then return nil,'not test window' end
+  local e = hs.axuielement.applicationElement(a):attributeValue('AXFocusedUIElement')
+  if not e then return nil,'no focused element' end
+  local role = e:attributeValue('AXRole')
+  if role ~= 'AXTextField' and role ~= 'AXTextArea' then return nil,'not text field: '..tostring(role) end
+  local parent = e
+  for _=1,15 do
+    if parent:attributeValue('AXRole') == 'AXWebArea' then
+      local rawURL=parent:attributeValue('AXURL')
+      local url=type(rawURL)=='table' and rawURL.url or tostring(rawURL or '')
+      if url == 'file:///private/tmp/ime-probe-20260923/index.html' then return e end
+      return nil,'wrong document: '..url
+    end
+    parent=parent:attributeValue('AXParent'); if not parent then break end
+  end
+  return nil,'no test page ancestor'
+end
+function P.inspect()
+ local e,err=field()
+ log({kind='inspect',error=err,role=e and e:attributeValue('AXRole'),value=e and e:attributeValue('AXValue')})
+ print('IME-PROBE inspect '..tostring(err or 'ready'))
+end
+local function send(code,mods)
+  local e,err=field()
+  if not e or hs.eventtap.isSecureInputEnabled() then P.stop(err or 'secure input'); return false end
+  log({kind='send',trial=P.trial,code=code,keys=mods})
+  if code==49 and mods and #mods>0 then
+    if P.variant=='system-target' then
+      hs.eventtap.keyStroke(mods,'space',10000,hs.application.frontmostApplication())
+    elseif P.variant=='system-dynamic' or P.variant=='system-cycle' then
+      for _,k in ipairs({{59,true},{58,true},{49,true},{49,false},{58,false},{59,false}}) do
+        local ev=hs.eventtap.event.newKeyEvent(k[1],k[2])
+        log({kind='chord-event',code=k[1],down=k[2],flags=ev:getFlags(),eventType=ev:getType()})
+        ev:post();hs.timer.usleep(10000)
+      end
+    else
+      hs.eventtap.keyStroke(mods,'space',10000)
+    end
+    log({kind='shortcut-released',trial=P.trial})
+    return true
+  end
+  hs.eventtap.event.newKeyEvent(mods or {},code,true):post()
+  hs.eventtap.event.newKeyEvent(mods or {},code,false):post()
+  return true
+end
+function P.run(count,variant,gap)
+ P.running=true; P.trial=0; P.variant=variant; P.runID=tostring(hs.timer.secondsSinceEpoch())
+ log({kind='begin',count=count,variant=variant,gap=gap})
+ local function trial()
+  if not P.running then return end
+  local e,err=field(); if not e then P.stop(err); return end
+  P.trial=P.trial+1
+  if P.trial>count then P.stop('complete');return end
+  local id=P.trial
+  log({kind='trial',trial=id,variant=variant,gap=gap})
+  local queue={
+    {0,function() return send(0,{'cmd'}) end},
+    {0.06,function() return send(51) end},
+  }
+  local t=.18
+  if variant=='eisuu-kana' then
+    table.insert(queue,{t,function() return send(102) end});t=t+.15
+  end
+  if variant:find('system-',1,true)==1 then
+    table.insert(queue,{t,function()
+      local f,why=field(); if not f then P.stop(why);return false end
+      log({kind='select-ABC',trial=id,result=hs.keycodes.currentSourceID('com.apple.keylayout.ABC')});return true
+    end});t=t+.15
+    table.insert(queue,{t,function() log({kind='system-shortcut',trial=id});return send(49,variant=='system-previous' and {'ctrl'} or {'ctrl','alt'}) end});t=t+.06
+    if variant=='system-cycle' then
+      t=t+.15
+      table.insert(queue,{t,function()
+        if hs.keycodes.currentSourceID()~='com.apple.inputmethod.SCIM.ITABC' then return send(49,{'ctrl','alt'}) end
+        return true
+      end});t=t+.06
+    end
+  else
+    table.insert(queue,{t,function() log({kind='kana-before',trial=id});return send(104) end})
+  end
+  for _,dt in ipairs({.02,.1,.5,1}) do
+    later(t+dt,function() if P.running then log({kind='source-after-kana',trial=id,delay=dt}) end end)
+  end
+  t=t+gap
+  for _,code in ipairs({45,34,4,0,31}) do
+    local key=code
+    table.insert(queue,{t,function() return send(key) end});t=t+.08
+  end
+  table.insert(queue,{t+.2,function() return send(49) end})
+  table.insert(queue,{t+.5,function()
+    local f,why=field();if not f then P.stop(why);return false end
+    local v=f:attributeValue('AXValue') or ''
+    log({kind='result',trial=id,variant=variant,gap=gap,value=v,chinese=v:find('[\228-\233]')~=nil,exact=v=='你好'})
+    if v~='你好' and P.captureFailure then
+      local recovery=P.captureFailure;P.captureFailure=nil;P.stop('captured-failure');hs.timer.doAfter(.5,recovery)
+    end
+    return true
+  end})
+  for _,step in ipairs(queue) do later(step[1],function() if P.running then step[2]() end end) end
+  later(math.max(t+.85,1.5),trial)
+ end
+ later(3,trial)
+end
+function P.batch()
+ local cases={{5,'system-cycle',.3},{15,'system-cycle',.03},{15,'eisuu-kana',.03}}
+ local index=0
+ P.nextBatch=function()
+  index=index+1
+  local c=cases[index]
+  if not c then P.nextBatch=nil;log({kind='batch-complete'});return end
+  P.run(c[1],c[2],c[3])
+ end
+ P.nextBatch()
+end
+function P.capture()
+ P.captureFailure=function()
+  local cases={{1,'kana-only',.3},{1,'system-cycle',.3}};local i=0
+  P.nextBatch=function()
+   i=i+1;local c=cases[i];if not c then P.nextBatch=nil;log({kind='recovery-complete'});return end
+   P.run(c[1],c[2],c[3])
+  end
+  P.nextBatch()
+ end
+ P.run(30,'eisuu-kana',.03)
+end
+print('IME-PROBE loaded (not running)')
