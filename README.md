@@ -14,6 +14,7 @@
 | :--- | :--- | :--- | :---: |
 | **`caffeine`** | **Caffeine 防休眠 Toggle** | 一键阻止/允许系统与屏幕空闲休眠；合盖状态智能感知，合盖时自动恢复正常睡眠策略。 | ☕️ / 🌙 |
 | **`chrome`** | **Chrome 参数冷启动** | Hammerspoon 新进程启动时，在 Chrome 尚未运行的情况下使用美国地区参数启动一次；配置热重载不会重复打开 Chrome。 | - |
+| **`auto_en`** | **特定 App 自动切英文** | 激活终端（Terminal/iTerm2/Warp/Ghostty等）及开发工具时自动将输入法切为 ABC 英文。 | 自动无感 |
 | **`reload`** | **配置自动热重载** | 监听配置文件变动，`.lua` 文件保存时瞬时完成 Reload。 | 🚀 气泡提示 |
 
 ---
@@ -27,6 +28,8 @@
 ├── init.lua              # 主入口：负责全局异常守护与模块加载
 ├── .gitignore            # Git 忽略配置
 ├── README.md             # 项目自述文档
+├── auto_en/
+│   └── auto_en.lua       # 终端等特定 App 激活时自动切英文输入法模块
 ├── caffeine/
 │   ├── caffeine.lua      # 菜单栏防休眠与 Toggle 机制
 │   └── assets/           # 菜单栏自定义模板图标资源 (active.png / inactive.png)
@@ -76,7 +79,14 @@ git clone https://github.com/vinono/hammerspoon-config.git ~/.hammerspoon
 ### 2. Chrome 冷启动参数优化
 - **工作机制**：在登录启动时为 Chrome 提供指定的运行参数；重载或日常使用期间不会打扰正在运行的 Chrome。
 
-### 3. 配置热更新
+### 3. 特定 App 自动切英文 (Auto English)
+- **解决痛点**：在终端执行命令或写代码时，误处在中文输入法状态下会导致按键乱码或需要多次按回车。
+- **支持应用**：
+  - 终端工具：原生 Terminal、iTerm2、Warp、Ghostty、Alacritty、Kitty、WezTerm 等。
+  - 开发工具：Xcode（支持在 `auto_en/auto_en.lua` 中快速取消注释或添加 VS Code、IntelliJ 等）。
+- **抗焦点竞争机制**：macOS 切换窗口时会异步恢复窗口先前的输入法状态（约 20~50ms 延迟），本模块采用即时切换 + 50ms 延时二重校验策略，确保稳定切换为英文 ABC (`com.apple.keylayout.ABC`)。
+
+### 4. 配置热更新
 - **工作机制**：在 `reload` 模块中创建了 `hs.pathwatcher` 监控整个配置文件目录。只要在此目录下保存任何 `.lua` 文件，Hammerspoon 就会立即自动重新加载，大幅提升微调配置时的开发体验。
 
 ---
