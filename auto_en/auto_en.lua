@@ -14,24 +14,40 @@ local targetBundleIDs = {
     ["io.alacritty"]               = true, -- Alacritty
     ["net.kovidgoyal.kitty"]       = true, -- Kitty
     ["com.github.wez.wezterm"]     = true, -- WezTerm
-    
-    -- 开发工具 / IDE (按需开启或添加)
+
+    -- 音视频 / 投屏 / 录制工具
+    ["com.tinycast.app"]           = true, -- Tinycast
+
+    -- 开发工具 / IDE
     ["com.apple.dt.Xcode"]         = true, -- Xcode
-    -- ["com.microsoft.VSCode"]    = true, -- VS Code
+    ["com.microsoft.VSCode"]       = true, -- VS Code
+    -- ["com.google.antigravity-ide"] = true, -- Antigravity IDE
+    -- ["com.torusknot.SourceTreeNotMAS"] = true, -- Sourcetree (Git客户端)
+    -- ["dev.kdrag0n.MacVirt"]        = true, -- OrbStack (容器/Linux工具)
     -- ["com.jetbrains.intellij"]  = true, -- IntelliJ IDEA
+
+    -- 设计与快捷键密集型应用 (强烈推荐：避免单字母快捷键与中文输入法冲突)
+    -- ["com.figma.Desktop"]          = true, -- Figma
 }
 
 -- 也支持通过应用显示名称模糊匹配 (小写比较)
 local targetAppNames = {
-    ["terminal"]   = true,
-    ["iterm"]      = true,
-    ["iterm2"]     = true,
-    ["warp"]       = true,
-    ["ghostty"]    = true,
-    ["alacritty"]  = true,
-    ["kitty"]      = true,
-    ["wezterm"]    = true,
-    ["xcode"]      = true,
+    ["terminal"]            = true,
+    ["iterm"]               = true,
+    ["iterm2"]              = true,
+    ["warp"]                = true,
+    ["ghostty"]             = true,
+    ["alacritty"]           = true,
+    ["kitty"]               = true,
+    ["wezterm"]             = true,
+    ["xcode"]               = true,
+    ["tinycast"]            = true,
+    ["code"]                = true,
+    ["visual studio code"]  = true,
+    -- ["figma"]               = true,
+    -- ["sourcetree"]          = true,
+    -- ["orbstack"]            = true,
+    -- ["antigravity ide"]     = true,
 }
 
 -- 重置旧 watcher，防止配置重载时发生监听器泄漏
@@ -64,3 +80,4 @@ end
 
 AutoEnAppWatcher = hs.application.watcher.new(onAppActivated)
 AutoEnAppWatcher:start()
+
