@@ -14,6 +14,7 @@ local globalOk, globalErr = pcall(function()
     require("caffeine.caffeine") -- 防休眠 Toggle 菜单栏控制
     require("chrome.startup")    -- 登录启动时为 Chrome 注入 Gemini 地区参数
     require("auto_en.auto_en")   -- 终端等特定 App 激活时自动切英文输入法
+    require("notunes.notunes").start(nil) -- 阻止 Music/iTunes；nil 可改为 "Spotify"
     require("reload.reload")     -- 配置文件变动自动重载
 end)
 
