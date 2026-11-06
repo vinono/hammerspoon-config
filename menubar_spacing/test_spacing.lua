@@ -1,0 +1,8 @@
+local spacing = require('menubar_spacing.spacing')
+local report = spacing.diagnose({ major = 27, minor = 2 })
+assert(report.supported == false, 'No verified public global spacing API on macOS 27')
+assert(report.action == 'none', 'Diagnosis must not recommend applying unverified settings')
+assert(type(report.reason) == 'string' and #report.reason > 0)
+assert(spacing.diagnose(nil).supported == false, 'Unknown system must fail closed')
+assert(spacing.diagnose({major = 26}).supported == false, 'Older OS must not imply verified support')
+print('SPACING_TESTS_OK: 5 assertions')
